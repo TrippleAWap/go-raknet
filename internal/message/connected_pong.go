@@ -6,13 +6,9 @@ import (
 )
 
 type ConnectedPong struct {
-	// PingTime is not the Unix Epoch in milliseconds; rather,
-	// it represents the duration in milliseconds since the system was started.
-	// This is provided by ConnectedPing.PingTime
+	// PingTime represents the duration in milliseconds since the system was started.
 	PingTime int64
-	// PongTime is not the Unix Epoch in milliseconds; rather,
-	// it represents the duration in milliseconds since the system was started.
-	// You can use this to check the uptime of the server.
+	// Pong represents the duration in milliseconds since the system was started.
 	PongTime int64
 }
 

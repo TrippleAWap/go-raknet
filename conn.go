@@ -164,7 +164,7 @@ func (conn *Conn) startTicking() {
 			}
 			if i%5 == 0 {
 				// Ping the other end periodically to prevent timeouts.
-				_ = conn.send(&message.ConnectedPing{PingTime: timeSinceStart()})
+				_ = conn.send(&message.ConnectedPing{PingTime: timestamp()})
 
 				conn.mu.Lock()
 				if t.Sub(*conn.lastActivity.Load()) > time.Second*5+conn.retransmission.rtt(t)*2 {
@@ -685,13 +685,12 @@ func (conn *Conn) writeTo(p []byte, raddr net.Addr) error {
 
 var (
 	// systemStart is the time the system was started.
-	// we are just randomly generating a believable timeframe as it's easier than getting the time the system was started.
-	// if we were to actually implement functions to get system uptime it would cause troubles with cross-platform compatability,
-	// and this should be good enough for most cases.
+	// We are just randomly generating a believable timeframe as it's
+	// removes the complications of cross-platform compatibility.
 	systemStart = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
 )
 
-// timeSinceStart returns a timeSinceStart since systemStart in milliseconds.
-func timeSinceStart() int64 {
+// timestamp returns a timestamp since systemStart in milliseconds.
+func timestamp() int64 {
 	return time.Since(systemStart).Milliseconds()
 }

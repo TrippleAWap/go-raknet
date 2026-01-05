@@ -123,9 +123,9 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr n
 		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid cookie '%x', expected '%x'", pk.Cookie, expected)
 	}
 
-	// vanilla clients always provide a negative client guid.
+	// Vanilla clients always provide a negative ClientGUID.
 	if pk.ClientGUID >= 0 {
-		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid client guid '%d', expected negative", pk.ClientGUID)
+		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
 	}
 
 	mtuSize := min(pk.MTU, maxMTUSize)
@@ -174,7 +174,7 @@ func (h listenerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, e
 		return true, nil
 	case message.IDDetectLostConnections:
 		// Let the other end know the connection is still alive.
-		return true, conn.send(&message.ConnectedPing{PingTime: timeSinceStart()})
+		return true, conn.send(&message.ConnectedPing{PingTime: timestamp()})
 	default:
 		return false, nil
 	}
@@ -187,7 +187,7 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST: %w", err)
 	}
-	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timeSinceStart()})
+	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timestamp()})
 }
 
 // handleNewIncomingConnection handles an incoming connection packet from the
@@ -239,7 +239,7 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 		return true, nil
 	case message.IDDetectLostConnections:
 		// Let the other end know the connection is still alive.
-		return true, conn.send(&message.ConnectedPing{PingTime: timeSinceStart()})
+		return true, conn.send(&message.ConnectedPing{PingTime: timestamp()})
 	default:
 		return false, nil
 	}
@@ -257,7 +257,7 @@ func (h dialerConnectionHandler) handleConnectionRequestAccepted(conn *Conn, b [
 		return errUnexpectedAdditionalCRA
 	default:
 		// Make sure to send NewIncomingConnection before closing conn.connected.
-		err := conn.send(&message.NewIncomingConnection{ServerAddress: resolve(conn.raddr), PingTime: pk.PongTime, PongTime: timeSinceStart()})
+		err := conn.send(&message.NewIncomingConnection{ServerAddress: resolve(conn.raddr), PingTime: pk.PongTime, PongTime: timestamp()})
 		close(conn.connected)
 		return err
 	}
@@ -270,9 +270,9 @@ func handleConnectedPing(conn *Conn, b []byte) error {
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PING: %w", err)
 	}
-	// Respond with a connected pong that has the ping timeSinceStart found in the
-	// connected ping, and our own timeSinceStart for the pong timeSinceStart.
-	return conn.sendUnreliable(&message.ConnectedPong{PingTime: pk.PingTime, PongTime: timeSinceStart()})
+	// Respond with a connected pong that has the ping timestamp found in the
+	// connected ping, and our own timestamp for the pong timestamp.
+	return conn.sendUnreliable(&message.ConnectedPong{PingTime: pk.PingTime, PongTime: timestamp()})
 }
 
 // handleConnectedPong handles a connected pong packet inside of buffer b. An
@@ -282,8 +282,8 @@ func handleConnectedPong(b []byte) error {
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PONG: %w", err)
 	}
-	if pk.PingTime > timeSinceStart() {
-		return fmt.Errorf("handle CONNECTED_PONG: timeSinceStart is in the future")
+	if pk.PingTime > timestamp() {
+		return fmt.Errorf("handle CONNECTED_PONG: timestamp is in the future")
 	}
 	// We don't actually use the ConnectedPong to measure rtt. It is too
 	// unreliable and doesn't give a good idea of the connection quality.
