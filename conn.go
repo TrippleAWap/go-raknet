@@ -164,7 +164,7 @@ func (conn *Conn) startTicking() {
 			}
 			if i%5 == 0 {
 				// Ping the other end periodically to prevent timeouts.
-				_ = conn.send(&message.ConnectedPing{PingTime: timestamp()})
+				_ = conn.send(&message.ConnectedPing{PingTime: timeSinceStart()})
 
 				conn.mu.Lock()
 				if t.Sub(*conn.lastActivity.Load()) > time.Second*5+conn.retransmission.rtt(t)*2 {
@@ -691,7 +691,7 @@ var (
 	systemStart = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
 )
 
-// timestamp returns a timestamp since systemStart in milliseconds.
-func timestamp() int64 {
+// timeSinceStart returns a timeSinceStart since systemStart in milliseconds.
+func timeSinceStart() int64 {
 	return time.Since(systemStart).Milliseconds()
 }

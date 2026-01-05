@@ -145,7 +145,7 @@ func (dialer Dialer) PingContext(ctx context.Context, address string) (response 
 	}
 	defer conn.Close()
 
-	data, _ := (&message.UnconnectedPing{PingTime: timestamp(), ClientGUID: -int64(atomic.AddUint64(&dialerID, 1))}).MarshalBinary()
+	data, _ := (&message.UnconnectedPing{PingTime: timeSinceStart(), ClientGUID: -int64(atomic.AddUint64(&dialerID, 1))}).MarshalBinary()
 	if _, err := conn.Write(data); err != nil {
 		return nil, dialer.error("ping", err)
 	}
@@ -254,7 +254,7 @@ func (dialer Dialer) DialContext(ctx context.Context, address string) (*Conn, er
 // successful.
 func (dialer Dialer) connect(ctx context.Context, state *connState) (*Conn, error) {
 	conn := newConn(internal.ConnToPacketConn(state.conn), state.raddr, state.mtu, dialerConnectionHandler{l: dialer.ErrorLog})
-	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timestamp()})); err != nil {
+	if err := conn.send((&message.ConnectionRequest{ClientGUID: state.id, RequestTime: timeSinceStart()})); err != nil {
 		return nil, dialer.error("dial", fmt.Errorf("send connection request: %w", err))
 	}
 

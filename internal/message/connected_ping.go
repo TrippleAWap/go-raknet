@@ -6,6 +6,8 @@ import (
 )
 
 type ConnectedPing struct {
+	// PingTime is not the Unix Epoch in milliseconds; rather,
+	// it represents the duration in milliseconds since the system was started.
 	PingTime int64
 }
 
