@@ -685,7 +685,7 @@ func (conn *Conn) writeTo(p []byte, raddr net.Addr) error {
 
 var (
 	// systemStart is the time the system was started.
-	// We are just randomly generating a believable timeframe as it's
+	// We randomly generate a believable timeframe as it
 	// removes the complications of cross-platform compatibility.
 	systemStart = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
 )
