@@ -6,7 +6,7 @@ import (
 )
 
 type ConnectedPing struct {
-	// PingTime represents the duration in milliseconds since the system was started.
+	// PingTime represents the duration in milliseconds since the system or client was started.
 	PingTime int64
 }
 

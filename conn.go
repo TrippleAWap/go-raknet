@@ -684,13 +684,13 @@ func (conn *Conn) writeTo(p []byte, raddr net.Addr) error {
 }
 
 var (
-	// systemStart is the time the system was started.
+	// systemStart is the time the system or client was started.
 	// We randomly generate a believable timeframe as it
 	// removes the complications of cross-platform compatibility.
-	systemStart = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
+	startTime = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
 )
 
-// timestamp returns a timestamp since systemStart in milliseconds.
+// timestamp returns a timestamp since startTime in milliseconds.
 func timestamp() int64 {
-	return time.Since(systemStart).Milliseconds()
+	return time.Since(startTime).Milliseconds()
 }
