@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/netip"
 	"slices"
@@ -684,10 +683,8 @@ func (conn *Conn) writeTo(p []byte, raddr net.Addr) error {
 }
 
 var (
-	// systemStart is the time the system or client was started.
-	// We randomly generate a believable timeframe as it
-	// removes the complications of cross-platform compatibility.
-	startTime = time.Now().Add(-(time.Hour + time.Second*time.Duration(rand.IntN(1024*1024))))
+	// startTime is the time the system or client was started.
+	startTime = time.Now()
 )
 
 // timestamp returns a timestamp since startTime in milliseconds.
