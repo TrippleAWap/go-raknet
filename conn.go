@@ -37,6 +37,12 @@ type Conn struct {
 	// connection. The rtt is measured in nanoseconds.
 	rtt atomic.Int64
 
+	// systemStart describes the time at which the sender's system or client was started,
+	// this is collected via timestamps.
+	systemStart time.Time
+
+	lastConnectedPong *message.ConnectedPong
+
 	closing atomic.Int64
 
 	ctx        context.Context
@@ -377,6 +383,16 @@ func (conn *Conn) Latency() time.Duration {
 	return time.Duration(conn.rtt.Load() / 2)
 }
 
+// SystemUptime returns the uptime of the senders system or client.
+func (conn *Conn) SystemUptime() time.Duration {
+	return time.Now().Sub(conn.systemStart)
+}
+
+// LastConnectedPong returns the most recent ConnectedPong message associated with the connection.
+func (conn *Conn) LastConnectedPong() *message.ConnectedPong {
+	return conn.lastConnectedPong
+}
+
 // send encodes an encoding.BinaryMarshaler and writes it to the Conn.
 func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
@@ -688,4 +704,9 @@ var startTime = time.Now()
 // timestamp returns a timestamp since startTime in milliseconds.
 func timestamp() int64 {
 	return time.Since(startTime).Milliseconds()
+}
+
+// SetUptime sets the time the system or client was started.
+func SetUptime(uptime time.Duration) {
+	startTime = time.Now().Add(-uptime)
 }
