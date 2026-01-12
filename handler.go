@@ -234,7 +234,7 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 	case message.IDConnectedPing:
 		return true, handleConnectedPing(conn, b[1:])
 	case message.IDConnectedPong:
-		return true, handleConnectedPong(b[1:])
+		return true, handleConnectedPong(conn, b[1:])
 	case message.IDDisconnectNotification:
 		conn.closeImmediately()
 		return true, nil
