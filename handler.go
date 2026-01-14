@@ -1,6 +1,7 @@
 package raknet
 
 import (
+	"encoding"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -18,12 +19,14 @@ type connectionHandler interface {
 	limitsEnabled() bool
 	close(conn *Conn)
 	log() *slog.Logger
+	WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error
 }
 
 type listenerConnectionHandler struct {
-	l            *Listener
-	cookieSalt   *atomic.Uint64
-	previousSalt *atomic.Uint64
+	l                  *Listener
+	cookieSalt         *atomic.Uint64
+	previousSalt       *atomic.Uint64
+	registeredHandlers map[byte]func(conn *Conn, b []byte)
 }
 
 var (
@@ -203,7 +206,22 @@ func (h listenerConnectionHandler) handleNewIncomingConnection(conn *Conn) error
 	return nil
 }
 
-type dialerConnectionHandler struct{ l *slog.Logger }
+func (h listenerConnectionHandler) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
+	errChan := make(chan error, 1)
+	defer close(errChan)
+
+	h.registeredHandlers[packetId] = func(conn *Conn, b []byte) {
+		errChan <- pk.UnmarshalBinary(b)
+		delete(h.registeredHandlers, packetId)
+	}
+
+	return <-errChan
+}
+
+type dialerConnectionHandler struct {
+	l                  *slog.Logger
+	registeredHandlers map[byte]func(conn *Conn, b []byte)
+}
 
 var (
 	errUnexpectedCR            = errors.New("unexpected CONNECTION_REQUEST packet")
@@ -224,7 +242,13 @@ func (h dialerConnectionHandler) limitsEnabled() bool {
 }
 
 func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err error) {
-	switch b[0] {
+	packetID := b[0]
+	for expectedPacketID, handler := range h.registeredHandlers {
+		if packetID == expectedPacketID {
+			handler(conn, b)
+		}
+	}
+	switch packetID {
 	case message.IDConnectionRequest:
 		return true, errUnexpectedCR
 	case message.IDConnectionRequestAccepted:
@@ -244,6 +268,18 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 	default:
 		return false, nil
 	}
+}
+
+func (h dialerConnectionHandler) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
+	errChan := make(chan error, 1)
+	defer close(errChan)
+
+	h.registeredHandlers[packetId] = func(conn *Conn, b []byte) {
+		errChan <- pk.UnmarshalBinary(b)
+		delete(h.registeredHandlers, packetId)
+	}
+
+	return <-errChan
 }
 
 // handleConnectionRequestAccepted handles a serialised connection request

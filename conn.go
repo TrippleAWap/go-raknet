@@ -127,9 +127,9 @@ func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, h connectionHandle
 	return c
 }
 
-// effectiveMTU returns the mtu size without the space allocated for IP and
+// EffectiveMTU returns the mtu size without the space allocated for IP and
 // UDP headers (28 bytes).
-func (conn *Conn) effectiveMTU() uint16 {
+func (conn *Conn) EffectiveMTU() uint16 {
 	return conn.mtu - 28
 }
 
@@ -255,7 +255,7 @@ func (conn *Conn) writeWithReliability(b []byte, rel reliability) (n int, err er
 // simultaneously from multiple goroutines, but will write one by one. Unlike
 // Write, write will not lock.
 func (conn *Conn) write(b []byte, rel reliability) (n int, err error) {
-	fragments := split(b, conn.effectiveMTU())
+	fragments := split(b, conn.EffectiveMTU())
 	var orderIndex uint24
 	if rel.sequencedOrOrdered() {
 		orderIndex = conn.orderIndex.Inc()
@@ -398,6 +398,10 @@ func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
 	_, err := conn.Write(b)
 	return err
+}
+
+func (conn *Conn) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
+	return conn.handler.WaitForPacket(packetId, pk)
 }
 
 // sendUnreliable encodes an encoding.BinaryMarshaler and writes it to the Conn using
@@ -601,7 +605,7 @@ func (conn *Conn) sendAcknowledgement(packets []uint24, bitflag byte, buf *bytes
 
 	for len(ack.packets) != 0 {
 		buf.WriteByte(bitflag | bitFlagDatagram)
-		n := ack.write(buf, conn.effectiveMTU())
+		n := ack.write(buf, conn.EffectiveMTU())
 		// We managed to write n packets in the ACK with this MTU size, write
 		// the next of the packets in a new ACK.
 		ack.packets = ack.packets[n:]
