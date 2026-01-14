@@ -144,9 +144,14 @@ func (listener *Listener) Addr() net.Addr {
 	return listener.conn.LocalAddr()
 }
 
-// Block blocks incoming network packets from being processed by the Listener.
+// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig
 func (listener *Listener) Block(addr net.Addr) {
 	listener.sec.block(addr)
+}
+
+// BlockDuration blocks incoming network packets from being processed by the Listener for the provided duration.
+func (listener *Listener) BlockDuration(addr net.Addr, duration time.Duration) {
+	listener.sec.blockDuration(addr, duration)
 }
 
 // Close closes the listener so that it may be cleaned up. It makes sure the
@@ -275,14 +280,18 @@ func (s *security) tick(stop <-chan struct{}) {
 
 // block stops the handling of packets originating from the IP of a net.Addr.
 func (s *security) block(addr net.Addr) {
-	if s.conf.BlockDuration < 0 {
+	s.blockDuration(addr, s.conf.BlockDuration)
+}
+
+func (s *security) blockDuration(addr net.Addr, duration time.Duration) {
+	if duration < 0 {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.blockCount.Add(1)
-	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = time.Now()
+	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = time.Now().Add(duration)
 }
 
 // blocked checks if the IP of a net.Addr is currently blocked from any packet
@@ -311,7 +320,7 @@ func (s *security) gcBlocks() {
 
 	now := time.Now()
 	maps.DeleteFunc(s.blocks, func(ip [16]byte, t time.Time) bool {
-		return now.Sub(t) > s.conf.BlockDuration
+		return now.After(t)
 	})
 	s.blockCount.Store(uint32(len(s.blocks)))
 }
