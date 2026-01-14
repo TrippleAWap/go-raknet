@@ -393,6 +393,26 @@ func (conn *Conn) LastConnectedPong() *message.ConnectedPong {
 	return conn.lastConnectedPong
 }
 
+func (conn *Conn) RaknetLatency() (time.Duration, error) {
+	sendTime := time.Now()
+	if err := conn.sendUnreliable(&message.ConnectedPing{
+		PingTime: timestamp(),
+	}); err != nil {
+		return 0, err
+	}
+
+	pong := message.ConnectedPong{}
+	if err := conn.WaitForPacket(message.IDConnectedPong, &pong); err != nil {
+		return 0, err
+	}
+
+	respTime := time.Now()
+
+	rtt := respTime.Sub(sendTime)
+
+	return rtt, nil
+}
+
 // send encodes an encoding.BinaryMarshaler and writes it to the Conn.
 func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"log"
 	"log/slog"
 	"net"
 	"sync/atomic"
@@ -190,6 +191,7 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST: %w", err)
 	}
+	log.Println("connReq requestTime", pk.RequestTime)
 	conn.systemStart = time.Now().Add(-time.Millisecond * time.Duration(pk.RequestTime))
 	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timestamp()})
 }
