@@ -278,11 +278,12 @@ func (s *security) tick(stop <-chan struct{}) {
 	}
 }
 
-// block stops the handling of packets originating from the IP of a net.Addr.
+// block stops the handling of packets originating from the IP of a net.Addr for the duration provided by the ListenConfig.
 func (s *security) block(addr net.Addr) {
 	s.blockDuration(addr, s.conf.BlockDuration)
 }
 
+// blockDuration stops the handling of packets originating from the IP of a net.Addr for the provided duration.
 func (s *security) blockDuration(addr net.Addr, duration time.Duration) {
 	if duration < 0 {
 		return
