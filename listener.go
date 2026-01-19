@@ -306,7 +306,6 @@ func (s *security) blockUntil(addr net.Addr, until time.Time) {
 
 	s.blockCount.Add(1)
 	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = until
-
 }
 
 // blocked checks if the IP of a net.Addr is currently blocked from any packet
