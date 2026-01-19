@@ -144,7 +144,7 @@ func (listener *Listener) Addr() net.Addr {
 	return listener.conn.LocalAddr()
 }
 
-// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig
+// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig.
 func (listener *Listener) Block(addr net.Addr) {
 	listener.sec.block(addr)
 }
