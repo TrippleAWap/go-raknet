@@ -290,7 +290,7 @@ func (s *security) block(addr net.Addr) {
 
 // blockFor stops the handling of packets originating from the IP of a net.Addr for the provided duration.
 func (s *security) blockFor(addr net.Addr, duration time.Duration) {
-	if duration < 0 {
+	if duration <= 0 {
 		return
 	}
 	s.blockUntil(addr, time.Now().Add(duration))
