@@ -154,11 +154,6 @@ func (listener *Listener) BlockFor(addr net.Addr, duration time.Duration) {
 	listener.sec.blockFor(addr, duration)
 }
 
-// BlockUntil blocks incoming network packets from being processed by the Listener until the provided time.
-func (listener *Listener) BlockUntil(addr net.Addr, until time.Time) {
-	listener.sec.blockUntil(addr, until)
-}
-
 // Close closes the listener so that it may be cleaned up. It makes sure the
 // goroutine handling incoming packets is able to be freed.
 func (listener *Listener) Close() error {
@@ -293,19 +288,11 @@ func (s *security) blockFor(addr net.Addr, duration time.Duration) {
 	if duration <= 0 {
 		return
 	}
-	s.blockUntil(addr, time.Now().Add(duration))
-}
-
-// blockUntil stops the handling of packets originating from the IP of a net.Addr until the provided time.
-func (s *security) blockUntil(addr net.Addr, until time.Time) {
-	if until.IsZero() || time.Now().After(until) {
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.blockCount.Add(1)
-	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = until
+	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = time.Now().Add(duration)
 }
 
 // blocked checks if the IP of a net.Addr is currently blocked from any packet
