@@ -298,7 +298,7 @@ func (s *security) blockFor(addr net.Addr, duration time.Duration) {
 
 // blockUntil stops the handling of packets originating from the IP of a net.Addr until the provided time.
 func (s *security) blockUntil(addr net.Addr, until time.Time) {
-	if until.IsZero() {
+	if until.IsZero() || time.Now().After(until) {
 		return
 	}
 	s.mu.Lock()
