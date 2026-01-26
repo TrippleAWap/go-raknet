@@ -1,12 +1,10 @@
 package raknet
 
 import (
-	"encoding"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/crc32"
-	"log"
 	"log/slog"
 	"net"
 	"sync/atomic"
@@ -20,14 +18,12 @@ type connectionHandler interface {
 	limitsEnabled() bool
 	close(conn *Conn)
 	log() *slog.Logger
-	WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error
 }
 
 type listenerConnectionHandler struct {
-	l                  *Listener
-	cookieSalt         *atomic.Uint64
-	previousSalt       *atomic.Uint64
-	registeredHandlers map[byte]func(conn *Conn, b []byte)
+	l            *Listener
+	cookieSalt   *atomic.Uint64
+	previousSalt *atomic.Uint64
 }
 
 var (
@@ -172,7 +168,7 @@ func (h listenerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, e
 	case message.IDConnectedPing:
 		return true, handleConnectedPing(conn, b[1:])
 	case message.IDConnectedPong:
-		return true, handleConnectedPong(conn, b[1:])
+		return true, handleConnectedPong(b[1:])
 	case message.IDDisconnectNotification:
 		conn.closeImmediately()
 		return true, nil
@@ -191,8 +187,6 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST: %w", err)
 	}
-	log.Println("connReq requestTime", pk.RequestTime)
-	conn.systemStart = time.Now().Add(-time.Millisecond * time.Duration(pk.RequestTime))
 	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timestamp()})
 }
 
@@ -208,22 +202,7 @@ func (h listenerConnectionHandler) handleNewIncomingConnection(conn *Conn) error
 	return nil
 }
 
-func (h listenerConnectionHandler) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
-	errChan := make(chan error, 1)
-	defer close(errChan)
-
-	h.registeredHandlers[packetId] = func(conn *Conn, b []byte) {
-		errChan <- pk.UnmarshalBinary(b)
-		delete(h.registeredHandlers, packetId)
-	}
-
-	return <-errChan
-}
-
-type dialerConnectionHandler struct {
-	l                  *slog.Logger
-	registeredHandlers map[byte]func(conn *Conn, b []byte)
-}
+type dialerConnectionHandler struct{ l *slog.Logger }
 
 var (
 	errUnexpectedCR            = errors.New("unexpected CONNECTION_REQUEST packet")
@@ -244,13 +223,7 @@ func (h dialerConnectionHandler) limitsEnabled() bool {
 }
 
 func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err error) {
-	packetID := b[0]
-	for expectedPacketID, handler := range h.registeredHandlers {
-		if packetID == expectedPacketID {
-			handler(conn, b)
-		}
-	}
-	switch packetID {
+	switch b[0] {
 	case message.IDConnectionRequest:
 		return true, errUnexpectedCR
 	case message.IDConnectionRequestAccepted:
@@ -260,7 +233,7 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 	case message.IDConnectedPing:
 		return true, handleConnectedPing(conn, b[1:])
 	case message.IDConnectedPong:
-		return true, handleConnectedPong(conn, b[1:])
+		return true, handleConnectedPong(b[1:])
 	case message.IDDisconnectNotification:
 		conn.closeImmediately()
 		return true, nil
@@ -270,18 +243,6 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 	default:
 		return false, nil
 	}
-}
-
-func (h dialerConnectionHandler) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
-	errChan := make(chan error, 1)
-	defer close(errChan)
-
-	h.registeredHandlers[packetId] = func(conn *Conn, b []byte) {
-		errChan <- pk.UnmarshalBinary(b)
-		delete(h.registeredHandlers, packetId)
-	}
-
-	return <-errChan
 }
 
 // handleConnectionRequestAccepted handles a serialised connection request
@@ -316,7 +277,7 @@ func handleConnectedPing(conn *Conn, b []byte) error {
 
 // handleConnectedPong handles a connected pong packet inside of buffer b. An
 // error is returned if the packet was invalid.
-func handleConnectedPong(conn *Conn, b []byte) error {
+func handleConnectedPong(b []byte) error {
 	pk := &message.ConnectedPong{}
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PONG: %w", err)
@@ -326,6 +287,5 @@ func handleConnectedPong(conn *Conn, b []byte) error {
 	}
 	// We don't actually use the ConnectedPong to measure rtt. It is too
 	// unreliable and doesn't give a good idea of the connection quality.
-	conn.lastConnectedPong = pk
 	return nil
 }

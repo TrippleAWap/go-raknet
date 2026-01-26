@@ -144,14 +144,14 @@ func (listener *Listener) Addr() net.Addr {
 	return listener.conn.LocalAddr()
 }
 
-// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig
+// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig.
 func (listener *Listener) Block(addr net.Addr) {
 	listener.sec.block(addr)
 }
 
-// BlockDuration blocks incoming network packets from being processed by the Listener for the provided duration.
-func (listener *Listener) BlockDuration(addr net.Addr, duration time.Duration) {
-	listener.sec.blockDuration(addr, duration)
+// BlockFor blocks incoming network packets from being processed by the Listener for the provided duration.
+func (listener *Listener) BlockFor(addr net.Addr, duration time.Duration) {
+	listener.sec.blockFor(addr, duration)
 }
 
 // Close closes the listener so that it may be cleaned up. It makes sure the
@@ -278,13 +278,14 @@ func (s *security) tick(stop <-chan struct{}) {
 	}
 }
 
-// block stops the handling of packets originating from the IP of a net.Addr.
+// block stops the handling of packets originating from the IP of a net.Addr for the duration provided by the ListenConfig.
 func (s *security) block(addr net.Addr) {
-	s.blockDuration(addr, s.conf.BlockDuration)
+	s.blockFor(addr, s.conf.BlockDuration)
 }
 
-func (s *security) blockDuration(addr net.Addr, duration time.Duration) {
-	if duration < 0 {
+// blockFor stops the handling of packets originating from the IP of a net.Addr for the provided duration.
+func (s *security) blockFor(addr net.Addr, duration time.Duration) {
+	if duration <= 0 {
 		return
 	}
 	s.mu.Lock()
