@@ -37,12 +37,6 @@ type Conn struct {
 	// connection. The rtt is measured in nanoseconds.
 	rtt atomic.Int64
 
-	// systemStart describes the time at which the sender's system or client was started,
-	// this is collected via timestamps.
-	systemStart time.Time
-
-	lastConnectedPong *message.ConnectedPong
-
 	closing atomic.Int64
 
 	ctx        context.Context
@@ -127,9 +121,9 @@ func newConn(conn net.PacketConn, raddr net.Addr, mtu uint16, h connectionHandle
 	return c
 }
 
-// EffectiveMTU returns the mtu size without the space allocated for IP and
+// effectiveMTU returns the mtu size without the space allocated for IP and
 // UDP headers (28 bytes).
-func (conn *Conn) EffectiveMTU() uint16 {
+func (conn *Conn) effectiveMTU() uint16 {
 	return conn.mtu - 28
 }
 
@@ -255,7 +249,7 @@ func (conn *Conn) writeWithReliability(b []byte, rel reliability) (n int, err er
 // simultaneously from multiple goroutines, but will write one by one. Unlike
 // Write, write will not lock.
 func (conn *Conn) write(b []byte, rel reliability) (n int, err error) {
-	fragments := split(b, conn.EffectiveMTU())
+	fragments := split(b, conn.effectiveMTU())
 	var orderIndex uint24
 	if rel.sequencedOrOrdered() {
 		orderIndex = conn.orderIndex.Inc()
@@ -383,45 +377,11 @@ func (conn *Conn) Latency() time.Duration {
 	return time.Duration(conn.rtt.Load() / 2)
 }
 
-// SystemUptime returns the uptime of the senders system or client.
-func (conn *Conn) SystemUptime() time.Duration {
-	return time.Now().Sub(conn.systemStart)
-}
-
-// LastConnectedPong returns the most recent ConnectedPong message associated with the connection.
-func (conn *Conn) LastConnectedPong() *message.ConnectedPong {
-	return conn.lastConnectedPong
-}
-
-func (conn *Conn) RaknetLatency() (time.Duration, error) {
-	sendTime := time.Now()
-	if err := conn.sendUnreliable(&message.ConnectedPing{
-		PingTime: timestamp(),
-	}); err != nil {
-		return 0, err
-	}
-
-	pong := message.ConnectedPong{}
-	if err := conn.WaitForPacket(message.IDConnectedPong, &pong); err != nil {
-		return 0, err
-	}
-
-	respTime := time.Now()
-
-	rtt := respTime.Sub(sendTime)
-
-	return rtt, nil
-}
-
 // send encodes an encoding.BinaryMarshaler and writes it to the Conn.
 func (conn *Conn) send(pk encoding.BinaryMarshaler) error {
 	b, _ := pk.MarshalBinary()
 	_, err := conn.Write(b)
 	return err
-}
-
-func (conn *Conn) WaitForPacket(packetId byte, pk encoding.BinaryUnmarshaler) error {
-	return conn.handler.WaitForPacket(packetId, pk)
 }
 
 // sendUnreliable encodes an encoding.BinaryMarshaler and writes it to the Conn using
@@ -625,7 +585,7 @@ func (conn *Conn) sendAcknowledgement(packets []uint24, bitflag byte, buf *bytes
 
 	for len(ack.packets) != 0 {
 		buf.WriteByte(bitflag | bitFlagDatagram)
-		n := ack.write(buf, conn.EffectiveMTU())
+		n := ack.write(buf, conn.effectiveMTU())
 		// We managed to write n packets in the ACK with this MTU size, write
 		// the next of the packets in a new ACK.
 		ack.packets = ack.packets[n:]
@@ -728,9 +688,4 @@ var startTime = time.Now()
 // timestamp returns a timestamp since startTime in milliseconds.
 func timestamp() int64 {
 	return time.Since(startTime).Milliseconds()
-}
-
-// SetUptime sets the time the system or client was started.
-func SetUptime(uptime time.Duration) {
-	startTime = time.Now().Add(-uptime)
 }
