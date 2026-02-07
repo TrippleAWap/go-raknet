@@ -41,9 +41,6 @@ type ListenConfig struct {
 	// BlockDuration defaults to 10s. If set to a negative value, IP addresses
 	// are never blocked on errors.
 	BlockDuration time.Duration
-
-	// HasLimits specifies whether to constrain limits on windows and slices.
-	HasLimits bool
 }
 
 // Listener implements a RakNet connection listener. It follows the same

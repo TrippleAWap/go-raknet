@@ -36,7 +36,7 @@ func (h listenerConnectionHandler) log() *slog.Logger {
 }
 
 func (h listenerConnectionHandler) limitsEnabled() bool {
-	return h.l.conf.HasLimits
+	return true
 }
 
 func (h listenerConnectionHandler) close(conn *Conn) {
