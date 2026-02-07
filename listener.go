@@ -42,7 +42,7 @@ type ListenConfig struct {
 	// are never blocked on errors.
 	BlockDuration time.Duration
 
-	// HasLimits describes whether or not the listener has limits on
+	// HasLimits specifies whether to constrain limits on windows and slices.
 	HasLimits bool
 }
 
