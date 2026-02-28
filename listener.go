@@ -44,6 +44,15 @@ type ListenConfig struct {
 
 	// HasLimits specifies whether to constrain limits on windows and slices.
 	HasLimits bool
+
+	// MissingDatagramsWindowSize specifies the maximum size of the sliding window used to
+	// track missing datagrams.
+	// Defaults to 20.
+	MissingDatagramsWindowSize uint8
+
+	// MissingDatagramsWindowTime specifies the time window used to track missing datagrams.
+	// Defaults to 5s.
+	MissingDatagramsWindowTime time.Duration
 }
 
 // Listener implements a RakNet connection listener. It follows the same
@@ -249,13 +258,24 @@ type security struct {
 
 	mu     sync.Mutex
 	blocks map[[16]byte]time.Time
+
+	unexpectedDatagramThresholds map[[16]byte]uint8
+
+	datagramSlidingWindowSize uint8
+	datagramSlidingWindowTime time.Duration
 }
 
 // newSecurity uses settings from a ListenConfig to create a security.
 func newSecurity(conf ListenConfig, h *listenerConnectionHandler) *security {
 	h.cookieSalt.Store(rand.Uint64())
 	h.previousSalt.Store(rand.Uint64())
-	return &security{h: h, conf: conf, blocks: make(map[[16]byte]time.Time)}
+	if conf.MissingDatagramsWindowSize == 0 {
+		conf.MissingDatagramsWindowSize = 20
+	}
+	if conf.MissingDatagramsWindowTime == 0 {
+		conf.MissingDatagramsWindowTime = time.Second * 5
+	}
+	return &security{h: h, conf: conf, blocks: make(map[[16]byte]time.Time), unexpectedDatagramThresholds: make(map[[16]byte]uint8), datagramSlidingWindowSize: conf.MissingDatagramsWindowSize, datagramSlidingWindowTime: conf.MissingDatagramsWindowTime}
 }
 
 // tick clears garbage from the security layer every second until the stop

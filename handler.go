@@ -72,7 +72,29 @@ func (h listenerConnectionHandler) handleUnconnected(b []byte, addr net.Addr) er
 	if b[0]&bitFlagDatagram != 0 {
 		// In some cases, the client will keep trying to send datagrams
 		// while it has already timed out. In this case, we should not return
-		// an error.
+		// an error. This can be abused, so we have to implement a threshold.
+		ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
+		unexpectedDatagramCount, ok := h.l.sec.unexpectedDatagramThresholds[ip]
+		if !ok {
+			unexpectedDatagramCount = h.l.sec.datagramSlidingWindowSize
+		}
+		if unexpectedDatagramCount == 0 {
+			delete(h.l.sec.unexpectedDatagramThresholds, ip)
+			return fmt.Errorf("too many unexpected datagrams")
+		}
+		unexpectedDatagramCount--
+		h.l.sec.unexpectedDatagramThresholds[ip] = unexpectedDatagramCount
+
+		go func() {
+			time.Sleep(h.l.sec.datagramSlidingWindowTime)
+			unexpectedDatagramCount, ok := h.l.sec.unexpectedDatagramThresholds[ip]
+			if !ok {
+				return
+			}
+			unexpectedDatagramCount++
+			h.l.sec.unexpectedDatagramThresholds[ip] = unexpectedDatagramCount
+		}()
+
 		h.log().Debug("unexpected datagram", "raddr", addr.String())
 		return nil
 	}
