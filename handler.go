@@ -217,6 +217,11 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	}
 	h.log().Debug("ConnectionRequest", "raddr", conn.raddr.String(), "packet", pk)
 
+	if pk.RequestTime > time.Now().UnixNano()/1e6 {
+		return fmt.Errorf("handle CONNECTION_REQUEST: timestamp is in the future")
+	}
+
+	conn.systemStart = time.Now().Add(-time.Millisecond * time.Duration(pk.RequestTime))
 	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timestamp()})
 }
 
