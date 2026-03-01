@@ -108,6 +108,8 @@ func (h listenerConnectionHandler) handleUnconnectedPing(b []byte, addr net.Addr
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read UNCONNECTED_PING: %w", err)
 	}
+	h.log().Debug("UnconnectedPing", "raddr", addr.String(), "packet", pk)
+
 	data, _ := (&message.UnconnectedPong{ServerGUID: h.l.id, PingTime: pk.PingTime, Data: *h.l.pongData.Load()}).MarshalBinary()
 	_, err := h.l.conn.WriteTo(data, addr)
 	return err
@@ -120,6 +122,8 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_1: %w", err)
 	}
+	h.log().Debug("OpenConnectionRequest1", "raddr", addr.String(), "packet", pk)
+
 	mtuSize := min(pk.MTU, maxMTUSize)
 
 	if pk.ClientProtocol != protocolVersion {
@@ -140,6 +144,8 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr n
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_2: %w", err)
 	}
+	h.log().Debug("OpenConnectionRequest2", "raddr", addr.String(), "packet", pk)
+
 	if expected := h.cookie(addr, h.cookieSalt.Load()); pk.Cookie != expected &&
 		pk.Cookie != h.cookie(addr, h.previousSalt.Load()) {
 		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid cookie '%x', expected '%x'", pk.Cookie, expected)
@@ -209,6 +215,8 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST: %w", err)
 	}
+	h.log().Debug("ConnectionRequest", "raddr", conn.raddr.String(), "packet", pk)
+
 	return conn.send(&message.ConnectionRequestAccepted{ClientAddress: resolve(conn.raddr), PingTime: pk.RequestTime, PongTime: timestamp()})
 }
 
@@ -274,6 +282,8 @@ func (h dialerConnectionHandler) handleConnectionRequestAccepted(conn *Conn, b [
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST_ACCEPTED: %w", err)
 	}
+	h.log().Debug("ConnectionRequestAccepted", "raddr", conn.raddr.String(), "packet", pk)
+
 	select {
 	case <-conn.connected:
 		return errUnexpectedAdditionalCRA
@@ -292,6 +302,7 @@ func handleConnectedPing(conn *Conn, b []byte) error {
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PING: %w", err)
 	}
+
 	// Respond with a connected pong that has the ping timestamp found in the
 	// connected ping, and our own timestamp for the pong timestamp.
 	return conn.sendUnreliable(&message.ConnectedPong{PingTime: pk.PingTime, PongTime: timestamp()})
@@ -304,6 +315,7 @@ func handleConnectedPong(b []byte) error {
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PONG: %w", err)
 	}
+
 	if pk.PingTime > timestamp() {
 		return fmt.Errorf("handle CONNECTED_PONG: timestamp is in the future")
 	}
