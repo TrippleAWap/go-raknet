@@ -12,7 +12,7 @@ import (
 
 	"github.com/sandertv/go-raknet/internal"
 
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/sandertv/go-raknet/message"
 )
 
 // UpstreamDialer is an interface for anything compatible with net.Dialer.

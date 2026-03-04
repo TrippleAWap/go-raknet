@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sandertv/go-raknet/internal"
+	"github.com/sandertv/go-raknet/message"
 )
 
 // UpstreamPacketListener allows for a custom PacketListener implementation.
@@ -45,14 +46,10 @@ type ListenConfig struct {
 	// HasLimits specifies whether to constrain limits on windows and slices.
 	HasLimits bool
 
-	// MissingDatagramsWindowSize specifies the maximum size of the sliding window used to
-	// track missing datagrams.
-	// Defaults to 20.
-	MissingDatagramsWindowSize uint8
-
-	// MissingDatagramsWindowTime specifies the time window used to track missing datagrams.
-	// Defaults to 5s.
-	MissingDatagramsWindowTime time.Duration
+	// HandlePacket is a function called when any raknet-specific packet is received;
+	// this may be used to implement rate-limits and/or other user-specific systems.
+	// It is important to note that this is only called for packets that ARE handled by the library.
+	HandlePacket func(message.Packet, net.Addr) error
 }
 
 // Listener implements a RakNet connection listener. It follows the same
@@ -258,24 +255,13 @@ type security struct {
 
 	mu     sync.Mutex
 	blocks map[[16]byte]time.Time
-
-	unexpectedDatagramThresholds map[[16]byte]uint8
-
-	datagramSlidingWindowSize uint8
-	datagramSlidingWindowTime time.Duration
 }
 
 // newSecurity uses settings from a ListenConfig to create a security.
 func newSecurity(conf ListenConfig, h *listenerConnectionHandler) *security {
 	h.cookieSalt.Store(rand.Uint64())
 	h.previousSalt.Store(rand.Uint64())
-	if conf.MissingDatagramsWindowSize == 0 {
-		conf.MissingDatagramsWindowSize = 20
-	}
-	if conf.MissingDatagramsWindowTime == 0 {
-		conf.MissingDatagramsWindowTime = time.Second * 5
-	}
-	return &security{h: h, conf: conf, blocks: make(map[[16]byte]time.Time), unexpectedDatagramThresholds: make(map[[16]byte]uint8), datagramSlidingWindowSize: conf.MissingDatagramsWindowSize, datagramSlidingWindowTime: conf.MissingDatagramsWindowTime}
+	return &security{h: h, conf: conf, blocks: make(map[[16]byte]time.Time)}
 }
 
 // tick clears garbage from the security layer every second until the stop

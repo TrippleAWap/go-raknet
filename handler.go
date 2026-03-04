@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/sandertv/go-raknet/message"
 )
 
 type connectionHandler interface {
@@ -72,28 +72,13 @@ func (h listenerConnectionHandler) handleUnconnected(b []byte, addr net.Addr) er
 	if b[0]&bitFlagDatagram != 0 {
 		// In some cases, the client will keep trying to send datagrams
 		// while it has already timed out. In this case, we should not return
-		// an error. This can be abused, so we have to implement a threshold.
-		ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
-		unexpectedDatagramCount, ok := h.l.sec.unexpectedDatagramThresholds[ip]
-		if !ok {
-			unexpectedDatagramCount = h.l.sec.datagramSlidingWindowSize
-		}
-		if unexpectedDatagramCount == 0 {
-			delete(h.l.sec.unexpectedDatagramThresholds, ip)
-			return fmt.Errorf("too many unexpected datagrams")
-		}
-		unexpectedDatagramCount--
-		h.l.sec.unexpectedDatagramThresholds[ip] = unexpectedDatagramCount
+		// an error.
 
-		go func() {
-			time.Sleep(h.l.sec.datagramSlidingWindowTime)
-			unexpectedDatagramCount, ok := h.l.sec.unexpectedDatagramThresholds[ip]
-			if !ok {
-				return
+		if h.l.sec.conf.HandlePacket != nil {
+			if err := h.l.sec.conf.HandlePacket(&message.UnexpectedDatagram{Data: b[1:]}, addr); err != nil {
+				return err
 			}
-			unexpectedDatagramCount++
-			h.l.sec.unexpectedDatagramThresholds[ip] = unexpectedDatagramCount
-		}()
+		}
 
 		h.log().Debug("unexpected datagram", "raddr", addr.String())
 		return nil
@@ -108,7 +93,22 @@ func (h listenerConnectionHandler) handleUnconnectedPing(b []byte, addr net.Addr
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read UNCONNECTED_PING: %w", err)
 	}
-	h.log().Debug("UnconnectedPing", "raddr", addr.String(), "packet", pk)
+
+	if pk.ClientGUID >= 0 {
+		return fmt.Errorf("handle UNCONNECTED_PING: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
+	}
+	if pk.PingTime <= 0 {
+		return fmt.Errorf("handle UNCONNECTED_PING: invalid ping time %v", pk.PingTime)
+	}
+	if pk.PingTime > time.Now().UnixMilli() {
+		return fmt.Errorf("handle UNCONNECTED_PING: timestamp is in the future")
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, addr); err != nil {
+			return err
+		}
+	}
 
 	data, _ := (&message.UnconnectedPong{ServerGUID: h.l.id, PingTime: pk.PingTime, Data: *h.l.pongData.Load()}).MarshalBinary()
 	_, err := h.l.conn.WriteTo(data, addr)
@@ -122,7 +122,6 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_1: %w", err)
 	}
-	h.log().Debug("OpenConnectionRequest1", "raddr", addr.String(), "packet", pk)
 
 	mtuSize := min(pk.MTU, maxMTUSize)
 
@@ -130,6 +129,12 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest1(b []byte, addr n
 		data, _ := (&message.IncompatibleProtocolVersion{ServerGUID: h.l.id, ServerProtocol: protocolVersion}).MarshalBinary()
 		_, _ = h.l.conn.WriteTo(data, addr)
 		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_1: incompatible protocol version %v (listener protocol = %v)", pk.ClientProtocol, protocolVersion)
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, addr); err != nil {
+			return err
+		}
 	}
 
 	data, _ := (&message.OpenConnectionReply1{ServerGUID: h.l.id, Cookie: h.cookie(addr, h.cookieSalt.Load()), ServerHasSecurity: !h.l.conf.DisableCookies, MTU: mtuSize}).MarshalBinary()
@@ -144,7 +149,6 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr n
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read OPEN_CONNECTION_REQUEST_2: %w", err)
 	}
-	h.log().Debug("OpenConnectionRequest2", "raddr", addr.String(), "packet", pk)
 
 	if expected := h.cookie(addr, h.cookieSalt.Load()); pk.Cookie != expected &&
 		pk.Cookie != h.cookie(addr, h.previousSalt.Load()) {
@@ -154,6 +158,12 @@ func (h listenerConnectionHandler) handleOpenConnectionRequest2(b []byte, addr n
 	// Vanilla clients always provide a negative ClientGUID.
 	if pk.ClientGUID >= 0 {
 		return fmt.Errorf("handle OPEN_CONNECTION_REQUEST_2: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, addr); err != nil {
+			return err
+		}
 	}
 
 	mtuSize := min(pk.MTU, maxMTUSize)
@@ -194,9 +204,9 @@ func (h listenerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, e
 	case message.IDNewIncomingConnection:
 		return true, h.handleNewIncomingConnection(conn)
 	case message.IDConnectedPing:
-		return true, handleConnectedPing(conn, b[1:])
+		return true, h.handleConnectedPing(conn, b[1:])
 	case message.IDConnectedPong:
-		return true, handleConnectedPong(b[1:])
+		return true, h.handleConnectedPong(conn, b[1:])
 	case message.IDDisconnectNotification:
 		conn.closeImmediately()
 		return true, nil
@@ -215,10 +225,18 @@ func (h listenerConnectionHandler) handleConnectionRequest(conn *Conn, b []byte)
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST: %w", err)
 	}
-	h.log().Debug("ConnectionRequest", "raddr", conn.raddr.String(), "packet", pk)
 
 	if pk.RequestTime > time.Now().UnixNano()/1e6 {
 		return fmt.Errorf("handle CONNECTION_REQUEST: timestamp is in the future")
+	}
+	if pk.ClientGUID >= 0 {
+		return fmt.Errorf("handle CONNECTION_REQUEST: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, conn.raddr); err != nil {
+			return err
+		}
 	}
 
 	conn.systemStart = time.Now().Add(-time.Millisecond * time.Duration(pk.RequestTime))
@@ -266,9 +284,9 @@ func (h dialerConnectionHandler) handle(conn *Conn, b []byte) (handled bool, err
 	case message.IDNewIncomingConnection:
 		return true, errUnexpectedNIC
 	case message.IDConnectedPing:
-		return true, handleConnectedPing(conn, b[1:])
+		return true, h.handleConnectedPing(conn, b[1:])
 	case message.IDConnectedPong:
-		return true, handleConnectedPong(b[1:])
+		return true, h.handleConnectedPong(conn, b[1:])
 	case message.IDDisconnectNotification:
 		conn.closeImmediately()
 		return true, nil
@@ -287,12 +305,12 @@ func (h dialerConnectionHandler) handleConnectionRequestAccepted(conn *Conn, b [
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTION_REQUEST_ACCEPTED: %w", err)
 	}
-	h.log().Debug("ConnectionRequestAccepted", "raddr", conn.raddr.String(), "packet", pk)
 
 	select {
 	case <-conn.connected:
 		return errUnexpectedAdditionalCRA
 	default:
+
 		// Make sure to send NewIncomingConnection before closing conn.connected.
 		err := conn.send(&message.NewIncomingConnection{ServerAddress: resolve(conn.raddr), PingTime: pk.PongTime, PongTime: timestamp()})
 		close(conn.connected)
@@ -302,8 +320,8 @@ func (h dialerConnectionHandler) handleConnectionRequestAccepted(conn *Conn, b [
 
 // handleConnectedPing handles a connected ping packet inside of buffer b. An
 // error is returned if the packet was invalid.
-func handleConnectedPing(conn *Conn, b []byte) error {
-	pk := message.ConnectedPing{}
+func (h dialerConnectionHandler) handleConnectedPing(conn *Conn, b []byte) error {
+	pk := &message.ConnectedPing{}
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PING: %w", err)
 	}
@@ -315,7 +333,7 @@ func handleConnectedPing(conn *Conn, b []byte) error {
 
 // handleConnectedPong handles a connected pong packet inside of buffer b. An
 // error is returned if the packet was invalid.
-func handleConnectedPong(b []byte) error {
+func (h dialerConnectionHandler) handleConnectedPong(conn *Conn, b []byte) error {
 	pk := &message.ConnectedPong{}
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PONG: %w", err)
@@ -324,6 +342,49 @@ func handleConnectedPong(b []byte) error {
 	if pk.PingTime > timestamp() {
 		return fmt.Errorf("handle CONNECTED_PONG: timestamp is in the future")
 	}
+
+	// We don't actually use the ConnectedPong to measure rtt. It is too
+	// unreliable and doesn't give a good idea of the connection quality.
+	return nil
+}
+
+// handleConnectedPing handles a connected ping packet inside of buffer b. An
+// error is returned if the packet was invalid.
+func (h listenerConnectionHandler) handleConnectedPing(conn *Conn, b []byte) error {
+	pk := &message.ConnectedPing{}
+	if err := pk.UnmarshalBinary(b); err != nil {
+		return fmt.Errorf("read CONNECTED_PING: %w", err)
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, conn.raddr); err != nil {
+			return err
+		}
+	}
+
+	// Respond with a connected pong that has the ping timestamp found in the
+	// connected ping, and our own timestamp for the pong timestamp.
+	return conn.sendUnreliable(&message.ConnectedPong{PingTime: pk.PingTime, PongTime: timestamp()})
+}
+
+// handleConnectedPong handles a connected pong packet inside of buffer b. An
+// error is returned if the packet was invalid.
+func (h listenerConnectionHandler) handleConnectedPong(conn *Conn, b []byte) error {
+	pk := &message.ConnectedPong{}
+	if err := pk.UnmarshalBinary(b); err != nil {
+		return fmt.Errorf("read CONNECTED_PONG: %w", err)
+	}
+
+	if pk.PingTime > timestamp() {
+		return fmt.Errorf("handle CONNECTED_PONG: timestamp is in the future")
+	}
+
+	if h.l.sec.conf.HandlePacket != nil {
+		if err := h.l.sec.conf.HandlePacket(pk, conn.raddr); err != nil {
+			return err
+		}
+	}
+
 	// We don't actually use the ConnectedPong to measure rtt. It is too
 	// unreliable and doesn't give a good idea of the connection quality.
 	return nil
