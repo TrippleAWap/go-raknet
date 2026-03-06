@@ -93,8 +93,8 @@ func (h listenerConnectionHandler) handleUnconnectedPing(b []byte, addr net.Addr
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read UNCONNECTED_PING: %w", err)
 	}
-	// minecraftpocket-servers.com uses ClientGUID 2 to ping and they are NOT willing to fix this, thus the small exception.
-	isExcused := pk.ClientGUID == 2
+	// minecraftpocket-servers.com uses ClientGUID 144115188075855872 to ping and they are NOT willing to fix this, thus the small exception.
+	isExcused := pk.ClientGUID == 144115188075855872
 	
 	if !isExcused && pk.ClientGUID >= 0 {
 		return fmt.Errorf("handle UNCONNECTED_PING: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
