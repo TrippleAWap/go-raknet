@@ -82,7 +82,7 @@ type Listener struct {
 }
 
 // listenerID holds the next ID to use for a Listener.
-var listenerID = rand.Int64()
+var listenerID = -rand.Int64()
 
 // Listen listens on the address passed and returns a listener that may be used
 // to accept connections. If not successful, an error is returned. The address
