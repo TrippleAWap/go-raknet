@@ -291,22 +291,38 @@ func (s *security) blockFor(addr net.Addr, duration time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.blockCount.Add(1)
-	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = time.Now().Add(duration)
+	ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
+	
+	if _, ok := s.blocks[ip]; !ok {
+		s.blockCount.Add(1)
+	}
+
+	s.blocks[ip] = time.Now().Add(duration)
 }
 
 // blocked checks if the IP of a net.Addr is currently blocked from any packet
 // handling.
 func (s *security) blocked(addr net.Addr) bool {
-	if s.conf.BlockDuration < 0 || s.blockCount.Load() == 0 {
+	if s.blockCount.Load() == 0 {
 		// Fast path optimisation: Prevents (relatively costly) map lookups.
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, blocked := s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())]
-	return blocked
+	ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
+
+	expiresAt, blocked := s.blocks[ip]
+	if !blocked {
+		return false
+	}
+	if !time.Now().Before(expiresAt) {
+		delete(s.blocks, ip)
+		s.blockCount.Store(uint32(len(s.blocks)))
+		return false
+	}
+	
+	return true
 }
 
 // gcBlocks removes blocks from the map that are no longer active. gcBlocks only
