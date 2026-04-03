@@ -337,7 +337,7 @@ func (s *security) gcBlocks() {
 
 	now := time.Now()
 	maps.DeleteFunc(s.blocks, func(ip [16]byte, t time.Time) bool {
-		return now.After(t)
+		return !now.Before(t)
 	})
 	s.blockCount.Store(uint32(len(s.blocks)))
 }
