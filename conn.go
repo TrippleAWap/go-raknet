@@ -688,7 +688,7 @@ func (conn *Conn) writeTo(p []byte, raddr net.Addr) error {
 
 // SystemUptime returns the uptime of the senders system or client.
 func (conn *Conn) SystemUptime() time.Duration {
-	return time.Now().Sub(conn.systemStart)
+	return time.Since(conn.systemStart)
 }
 
 // startTime is the time the system or client was started.

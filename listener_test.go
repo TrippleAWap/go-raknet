@@ -2,9 +2,10 @@ package raknet_test
 
 import (
 	"fmt"
-	"github.com/sandertv/go-raknet"
 	"testing"
 	"time"
+
+	"github.com/sandertv/go-raknet"
 )
 
 func TestListen(t *testing.T) {

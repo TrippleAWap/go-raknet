@@ -95,7 +95,7 @@ func (h listenerConnectionHandler) handleUnconnectedPing(b []byte, addr net.Addr
 	}
 	// minecraftpocket-servers.com uses ClientGUID 144115188075855872 to ping and they are NOT willing to fix this, thus the small exception.
 	isExcused := pk.ClientGUID == 144115188075855872
-	
+
 	if !isExcused && pk.ClientGUID >= 0 {
 		return fmt.Errorf("handle UNCONNECTED_PING: invalid ClientGUID '%d', expected negative", pk.ClientGUID)
 	}
@@ -335,7 +335,7 @@ func (h dialerConnectionHandler) handleConnectedPing(conn *Conn, b []byte) error
 
 // handleConnectedPong handles a connected pong packet inside of buffer b. An
 // error is returned if the packet was invalid.
-func (h dialerConnectionHandler) handleConnectedPong(conn *Conn, b []byte) error {
+func (h dialerConnectionHandler) handleConnectedPong(_ *Conn, b []byte) error {
 	pk := &message.ConnectedPong{}
 	if err := pk.UnmarshalBinary(b); err != nil {
 		return fmt.Errorf("read CONNECTED_PONG: %w", err)
