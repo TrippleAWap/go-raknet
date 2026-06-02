@@ -148,9 +148,14 @@ func (listener *Listener) Addr() net.Addr {
 	return listener.conn.LocalAddr()
 }
 
-// Block blocks incoming network packets from being processed by the Listener.
+// Block blocks incoming network packets from being processed by the Listener for the duration provided by the ListenConfig.
 func (listener *Listener) Block(addr net.Addr) {
 	listener.sec.block(addr)
+}
+
+// BlockFor blocks incoming network packets from being processed by the Listener for the provided duration.
+func (listener *Listener) BlockFor(addr net.Addr, duration time.Duration) {
+	listener.sec.blockFor(addr, duration)
 }
 
 // Close closes the listener so that it may be cleaned up. It makes sure the
@@ -282,30 +287,51 @@ func (s *security) tick(stop <-chan struct{}) {
 	}
 }
 
-// block stops the handling of packets originating from the IP of a net.Addr.
+// block stops the handling of packets originating from the IP of a net.Addr for the duration provided by the ListenConfig.
 func (s *security) block(addr net.Addr) {
-	if s.conf.BlockDuration < 0 {
+	s.blockFor(addr, s.conf.BlockDuration)
+}
+
+// blockFor stops the handling of packets originating from the IP of a net.Addr for the provided duration.
+func (s *security) blockFor(addr net.Addr, duration time.Duration) {
+	if duration <= 0 {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.blockCount.Add(1)
-	s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())] = time.Now()
+	ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
+	
+	if _, ok := s.blocks[ip]; !ok {
+		s.blockCount.Add(1)
+	}
+
+	s.blocks[ip] = time.Now().Add(duration)
 }
 
 // blocked checks if the IP of a net.Addr is currently blocked from any packet
 // handling.
 func (s *security) blocked(addr net.Addr) bool {
-	if s.conf.BlockDuration < 0 || s.blockCount.Load() == 0 {
+	if s.blockCount.Load() == 0 {
 		// Fast path optimisation: Prevents (relatively costly) map lookups.
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	_, blocked := s.blocks[[16]byte(addr.(*net.UDPAddr).IP.To16())]
-	return blocked
+	ip := [16]byte(addr.(*net.UDPAddr).IP.To16())
+
+	expiresAt, blocked := s.blocks[ip]
+	if !blocked {
+		return false
+	}
+	if !time.Now().Before(expiresAt) {
+		delete(s.blocks, ip)
+		s.blockCount.Store(uint32(len(s.blocks)))
+		return false
+	}
+	
+	return true
 }
 
 // gcBlocks removes blocks from the map that are no longer active. gcBlocks only
@@ -320,7 +346,7 @@ func (s *security) gcBlocks() {
 
 	now := time.Now()
 	maps.DeleteFunc(s.blocks, func(ip [16]byte, t time.Time) bool {
-		return now.Sub(t) > s.conf.BlockDuration
+		return !now.Before(t)
 	})
 	s.blockCount.Store(uint32(len(s.blocks)))
 }
