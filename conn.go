@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/sandertv/go-raknet/internal"
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/sandertv/go-raknet/message"
 )
 
 const (

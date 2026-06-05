@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sandertv/go-raknet/internal/message"
+	"github.com/sandertv/go-raknet/message"
 )
 
 type connectionHandler interface {
